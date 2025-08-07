@@ -1,4 +1,5 @@
 name: Deploy static site to Pages
+
 on:
   push:
     branches: [ "main" ]
@@ -19,10 +20,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: "."   # root enthält index.html
+          path: "."   # index.html liegt im Root
   deploy:
     needs: build
     runs-on: ubuntu-latest

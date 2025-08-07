@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Digitwise Collatz Automaton</title>
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #000;
+      color: #eee;
+      font-family: monospace;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    h1 {
+      font-size: 2.2em;
+      margin: 20px 0 10px;
+      color: #fff;
+      text-shadow: 1px 1px 4px #00ffff55;
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    input, button, select {
+      font-size: 1em;
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: 1px solid #444;
+      background-color: #111;
+      color: #eee;
+      transition: all 0.2s ease-in-out;
+      box-shadow: 0 1px 3px rgba(255, 255, 255, 0.1);
+    }
+
+    input:focus, select:focus {
+      border-color: #00ffff;
+      outline: none;
+      box-shadow: 0 0 5px #00ffff88;
+    }
+
+    button:hover, select:hover {
+      background-color: #222;
+      cursor: pointer;
+      box-shadow: 0 0 6px #00ffff44;
+    }
+
+    label {
+      font-size: 1em;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: #ccc;
+    }
+
+    main {
+      width: 100%;
+      padding: 0 40px;
+      box-sizing: border-box;
+    }
+  </style>
+</head>
+<body>
+  <h1>Digitwise Collatz Automaton</h1>
+  <div class="controls">
+    <input id="inputN" placeholder="Enter a number (e.g. 27)" />
+    <button onclick="restartSimulation()">Start</button>
+    <button onclick="togglePause()">Resume</button>
+    <label>Speed: 
+      <select id="speedSelect" onchange="updateSpeed()">
+        <option value="500">Slow</option>
+        <option value="200">Medium</option>
+        <option value="100">Fast</option>
+        <option value="20" selected>Turbo</option>
+      </select>
+    </label>
+  </div>
+  <main id="sketch-holder"></main>
+
+  <script>
+let orbit = [];
+let t = 0;
+let blockW = 100, blockH = 60;
+let cols = 0;
+let maxRows = 18;
+let playing = false;
+let speed = 100;
+
+function setup() {
+  let canvas = createCanvas(windowWidth, maxRows * blockH + 60);
+  canvas.parent("sketch-holder");
+  textAlign(CENTER, CENTER);
+  textSize(20);
+  noLoop();
+}
+
+function draw() {
+  background(0);
+  if (orbit.length === 0) return;
+
+  const sideMargin = 40;
+  const availableWidth = width - 2 * sideMargin;
+  if (cols * blockW > availableWidth) {
+    blockW = availableWidth / cols;
+    textSize(Math.min(20, blockW / 5));
+  }
+
+  let totalW = cols * blockW;
+  let offsetX = (width - totalW) / 2;
+
+  for (let r = 0; r < maxRows; r++) {
+    let stepIdx = t + r;
+    if (stepIdx >= orbit.length) break;
+    let triplets = orbit[stepIdx];
+    for (let c = 0; c < cols; c++) {
+      let trip = triplets[cols - 1 - c] || [0, 0, 0];
+      let x = offsetX + c * blockW;
+      let y = r * blockH + 20;
+      drawTripletBlock(x, y, trip);
+    }
+  }
+
+  if (t + maxRows < orbit.length) {
+    t++;
+    if (playing) setTimeout(() => redraw(), speed);
+  } else {
+    playing = false;
+  }
+}
+
+function drawTripletBlock(x, y, triplet) {
+  let [r, p, c] = triplet;
+  let col = (r === 0 && p === 0 && c === 0) ? '#111' : colorForTriplet(r);
+  fill(col);
+  stroke(80);
+  rect(x, y, blockW - 5, blockH - 5, 10);
+  if (blockW > 18) {
+    fill(255);
+    noStroke();
+    text(`${r},${p},${c}`, x + (blockW - 5) / 2, y + (blockH - 5) / 2);
+  }
+}
+
+function colorForTriplet(r) {
+  const palette = [
+    '#333333', '#FFD700', '#FFA500', '#FF6600', '#FF4444',
+    '#FF00AA', '#CC00FF', '#6600FF', '#3399FF', '#00FFFF'
+  ];
+  return palette[r % 10];
+}
+
+function restartSimulation() {
+  const input = document.getElementById("inputN").value.trim();
+  if (!/^[1-9]\d*$/.test(input)) return alert("Please enter a valid positive number.");
+  const start = BigInt(input);
+  speed = parseInt(document.getElementById("speedSelect").value);
+
+  orbit = buildOrbitPreview(start);
+  cols = Math.max(...orbit.map(t => t.length));
+  blockW = 100;
+  textSize(20);
+  t = 0;
+  playing = true;
+  redraw();
+}
+
+function togglePause() {
+  playing = !playing;
+  if (playing) redraw();
+}
+
+function updateSpeed() {
+  speed = parseInt(document.getElementById("speedSelect").value);
+}
+
+function buildOrbitPreview(n) {
+  const seq = [toTripletsPreview(n)];
+  let count = 0;
+  while (count++ < 10000) {
+    let current = seq.at(-1);
+    let next = collatzStep(current);
+    seq.push(next);
+    if (isFinalState(next)) break;
+  }
+  return seq;
+}
+
+function toTripletsPreview(n) {
+  const digits = Array.from(n.toString()).reverse().map(d => parseInt(d));
+  const isEven = digits[0] % 2 === 0;
+  let carry = 0;
+  let trips = [];
+
+  for (let i = 0; i < digits.length; i++) {
+    const r = digits[i];
+    const p = (i + 1 < digits.length) ? digits[i + 1] % 2 : 0;
+    trips.push([r, p, carry]);
+
+    if (isEven) {
+      carry = (p === 1) ? 1 : 0;
+    } else {
+      const val = 3 * r + (i === 0 ? 1 : carry);
+      carry = Math.floor(val / 10);
+    }
+  }
+
+  return trips;
+}
+
+function collatzStep(trips) {
+  const isEven = trips[0][0] % 2 === 0;
+  const result = [];
+  let carryOut = 0;
+
+  if (isEven) {
+    for (let i = 0; i < trips.length; i++) {
+      const [r, p, c] = trips[i];
+      const newR = Math.floor((r - c) / 2) + 5 * p;
+      result.push([newR, 0, 0]);
+    }
+  } else {
+    for (let i = 0; i < trips.length; i++) {
+      const r = trips[i][0];
+      const c = (i === 0) ? 1 : carryOut;
+      const val = 3 * r + c;
+      const newR = val % 10;
+      carryOut = Math.floor(val / 10);
+      result.push([newR, 0, 0]);
+    }
+
+    while (carryOut > 0) {
+      result.push([carryOut % 10, 0, 0]);
+      carryOut = Math.floor(carryOut / 10);
+    }
+  }
+
+  for (let i = 0; i < result.length; i++) {
+    const nextR = (i + 1 < result.length) ? result[i + 1][0] : 0;
+    result[i][1] = nextR % 2;
+  }
+
+  return result;
+}
+
+function isFinalState(triplets) {
+  for (let i = 1; i < triplets.length; i++) {
+    const [r, p, c] = triplets[i];
+    if (r !== 0 || p !== 0 || c !== 0) return false;
+  }
+  const [r0, p0, c0] = triplets[0];
+  return r0 === 1 && p0 === 0 && c0 === 0;
+}
+  </script>
+</body>
+</html>
